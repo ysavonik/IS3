@@ -4,17 +4,37 @@ import platform
 import time
 import numpy as np
 
-HEIGHT = 20
+HEIGHT = 11
 WIDTH = 20
 
 class MapGrid:
-    def __init__(self, width, height, start, goal):
-        self.width = width
-        self.height = height
+    def __init__(self, file='map.txt'): #width, height, start, goal
+        self.score = 0
         self.walls = []
-        self.start = start
-        self.goal = goal
-        self.player = self.start
+        self.ghosts = []
+        self.goals = []
+        self.empty = []
+        with open('map.txt', 'r') as f:
+            lines = f.readlines()
+            map = [[x.strip()] for x in lines]
+        for i, line in enumerate(map):
+            for j in range(len(line[0])):
+                if map[i][0][j] == '%':
+                    self.walls.append((j, i))
+                if map[i][0][j] == '.':
+                    self.goals.append((j, i))
+                if map[i][0][j] == 'G':
+                    self.ghosts.append((j, i))
+                    self.empty.append((j, i))
+                if map[i][0][j] == ' ':
+                    self.empty.append((j, i))
+                if map[i][0][j] == 'P':
+                    self.start = (j, i)
+                    self.player = (j, i)
+                    self.empty.append((j, i))
+        self.width = j + 1
+        self.height = i + 1
+        print(self.ghosts)
 
     def move_player(self, d):
         x = self.player[0]
@@ -32,10 +52,54 @@ class MapGrid:
 
         if pos not in self.walls:
             self.player = pos
+            if (x, y) in self.goals:
+                self.goals.remove((x, y))
+                self.empty.append((x, y))
+                self.score += 1
 
-        if pos == self.goal:
-            print("You made it to the end!")
+    def move_ghosts(self):
+        for p, ghost in enumerate(self.ghosts):
+            x = ghost[0]
+            y = ghost[1]
+            pos = (x, y)
+            res = {}
+            for i in range(0, self.width):
+                for j in range(0, self.height):
+                    res[(i, j)] = []
+                    if (i + 1, j) not in self.walls and i + 1 < self.width:
+                        res[(i, j)].append((i + 1, j))
+                    if (i - 1, j) not in self.walls and i - 1 > -1:
+                        res[(i, j)].append((i - 1, j))
+                    if (i, j + 1) not in self.walls and j + 1 < self.height:
+                        res[(i, j)].append((i, j + 1))
+                    if (i, j - 1) not in self.walls and j - 1 > -1:
+                        res[(i, j)].append((i, j - 1))
+            graph = res
+            move = dijsktra(graph, pos, self.player)[1]
+            d = ''
+            if ghost[0] < move[0]:
+                d = 'r'
+            if ghost[0] > move[0]:
+                d = 'l'
+            if ghost[1] > move[1]:
+                d = 'u'
+            if ghost[1] < move[1]:
+                d = 'd'
+            if randint(0, 1) == 0:
+                d = d
+            else:
+                d = choice(['r', 'l', 'u', 'd'])
+            if d == 'r' and x + 1 <= WIDTH - 1 and y <= HEIGHT - 1 and x + 1 >= 0 and y >= 0:
+                pos = (x + 1, y)
+            if d == 'l' and x - 1 <= WIDTH - 1 and y <= HEIGHT - 1 and x - 1 >= 0 and y >= 0:
+                pos = (x - 1, y)
+            if d == 'u' and x <= WIDTH - 1 and y - 1 <= HEIGHT - 1 and x >= 0 and y - 1 >= 0:
+                pos = (x, y - 1)
+            if d == 'd' and x <= WIDTH - 1 and y + 1 <= HEIGHT - 1 and x >= 0 and y + 1 >= 0:
+                pos = (x, y + 1)
 
+            if pos not in self.walls:
+                self.ghosts[p] = pos
 
 def draw_grid(g, width=2):
     for y in range(g.height):
@@ -44,26 +108,14 @@ def draw_grid(g, width=2):
                 symbol = '#'
             elif (x, y) == g.player:
                 symbol = '$'
-            elif (x, y) == g.start:
-                symbol = '<'
-            elif (x, y) == g.goal:
-                symbol = '>'
-            else:
+            elif (x, y) in g.ghosts:
+                symbol = 'G'
+            elif (x, y) in g.goals:
                 symbol = '.'
+            elif (x, y) in g.empty:
+                symbol = ' '
             print("%%-%ds" % width % symbol, end="")
         print()
-
-
-def get_walls(g: MapGrid, pct=.70) -> list:
-        out = []
-        for i in range(int(g.height*g.width*pct)//2):
-
-            x = randint(1, g.width-2)
-            y = randint(1, g.height-2)
-            if (x, y) != g.start and (x, y) != g.goal:
-                out.append((x, y))
-                # out.append((x + choice([-1, 0, 1]), y + choice([-1, 0, 1])))
-        return out
 
 
 def clear():
@@ -73,33 +125,26 @@ def clear():
 
 def create_graph(g: MapGrid):
     res = {}
-    for i in range(0, g.height):
-        for j in range(0, g.width):
+    dangerous = []
+    for ghost in g.ghosts:
+        dangerous.append(ghost)
+        dangerous.append((ghost[0] - 1, ghost[1]))
+        dangerous.append((ghost[0] + 1, ghost[1]))
+        dangerous.append((ghost[0], ghost[1] - 1))
+        dangerous.append((ghost[0], ghost[1] + 1))
+    for i in range(0, g.width):
+        for j in range(0, g.height):
             res[(i, j)] = []
-            if (i + 1, j) not in g.walls and i + 1 <= g.height - 1:
+            if (i + 1, j) not in g.walls and i + 1 < g.width and (i + 1, j) not in dangerous:#:
                 res[(i, j)].append((i + 1, j))
-            if (i - 1, j) not in g.walls and i - 1 >= 0:
+            if (i - 1, j) not in g.walls and i - 1 > -1 and (i - 1, j) not in dangerous:#:
                 res[(i, j)].append((i - 1, j))
-            if (i, j + 1) not in g.walls and j + 1 <= g.width - 1:
+            if (i, j + 1) not in g.walls and j + 1 < g.height and (i, j + 1) not in dangerous:#:
                 res[(i, j)].append((i, j + 1))
-            if (i, j - 1) not in g.walls and j - 1 >= 0:
+            if (i, j - 1) not in g.walls and j - 1 > -1 and (i, j - 1) not in dangerous:#:
                 res[(i, j)].append((i, j - 1))
     return res
 
-# def find_shortest_path(graph, start, end, path=[]):
-#     path = path + [start]
-#     if start == end:
-#         return path
-#     if start not in graph:
-#         return None
-#     shortest = None
-#     for node in graph[start]:
-#         if node not in path:
-#             newpath = find_shortest_path(graph, node, end, path)
-#             if newpath:
-#                 if not shortest or len(newpath) < len(shortest):
-#                     shortest = newpath
-#     return shortest
 
 def dijsktra(graph, initial, end):
     shortest_paths = {initial: (None, 0)}
@@ -137,159 +182,76 @@ def dijsktra(graph, initial, end):
         current_node = next_node
     # Reverse path
     path = path[::-1]
-    print('iterations Dejk: ', iterations)
     return path
 
 
-class Node():
-    """A node class for A* Pathfinding"""
-
-    def __init__(self, parent=None, position=None):
-        self.parent = parent
-        self.position = position
-
-        self.g = 0
-        self.h = 0
-        self.f = 0
-
-    def __eq__(self, other):
-        return self.position == other.position
-
-
-def astar(maze, start, end):
-    """Returns a list of tuples as a path from the given start to the given end in the given maze"""
-    iterations = 0
-    # Create start and end node
-    start_node = Node(None, start)
-    start_node.g = start_node.h = start_node.f = 0
-    end_node = Node(None, end)
-    end_node.g = end_node.h = end_node.f = 0
-
-    # Initialize both open and closed list
-    open_list = []
-    closed_list = []
-
-    # Add the start node
-    open_list.append(start_node)
-
-    # Loop until you find the end
-    while len(open_list) > 0:
-        iterations = iterations + 1
-        # Get the current node
-        current_node = open_list[0]
-        current_index = 0
-        for index, item in enumerate(open_list):
-            iterations = iterations + 1
-            if item.f < current_node.f:
-                current_node = item
-                current_index = index
-
-        # Pop current off open list, add to closed list
-        open_list.pop(current_index)
-        closed_list.append(current_node)
-
-        # Found the goal
-        if current_node == end_node:
-            path = []
-            current = current_node
-            while current is not None:
-                iterations = iterations + 1
-                path.append(current.position)
-                current = current.parent
-            print('iterations A*: ', iterations)
-            return path[::-1] # Return reversed path
-
-        # Generate children
-        children = []
-        for new_position in [(0, -1), (0, 1), (-1, 0), (1, 0), (-1, -1), (-1, 1), (1, -1), (1, 1)]: # Adjacent squares
-            iterations = iterations + 1
-
-            # Get node position
-            node_position = (current_node.position[0] + new_position[0], current_node.position[1] + new_position[1])
-
-            # Make sure within range
-            if node_position[0] > (len(maze) - 1) or node_position[0] < 0 or node_position[1] > (len(maze[len(maze)-1]) -1) or node_position[1] < 0:
-                continue
-
-            # Make sure walkable terrain
-            if maze[node_position[0]][node_position[1]] != 0:
-                continue
-
-            # Create new node
-            new_node = Node(current_node, node_position)
-
-            # Append
-            children.append(new_node)
-
-        # Loop through children
-        for child in children:
-            iterations = iterations + 1
-
-            # Child is on the closed list
-            for closed_child in closed_list:
-                if child == closed_child:
-                    continue
-
-            # Create the f, g, and h values
-            child.g = current_node.g + 1
-            child.h = ((child.position[0] - end_node.position[0]) ** 2) + ((child.position[1] - end_node.position[1]) ** 2)
-            child.f = child.g + child.h
-
-            # Child is already in the open list
-            for open_node in open_list:
-
-                iterations = iterations + 1
-                if child == open_node and child.g > open_node.g:
-                    continue
-
-            # Add the child to the open list
-            open_list.append(child)
-
-
 def main():
-    g = MapGrid(WIDTH, HEIGHT, (randint(0, HEIGHT-1), randint(0, WIDTH-1)), (randint(0, HEIGHT-1), randint(0, WIDTH-1)))
-    g.walls = get_walls(g)
+    g = MapGrid()
+    clear()
     draw_grid(g)
-    graph = create_graph(g)
-    path = dijsktra(graph, g.start, g.goal)
-    path.pop(0)
-    print("path_dej: ", path)
-    maze = [[0 for x in range(g.width)] for y in range(g.height)]
-
-    for wall in g.walls:
-        maze[wall[0]][wall[1]] = 1
-
-    start = g.start
-    end = g.goal
-
-    path_a = astar(maze, start, end)
-    path_a.pop(0)
-    print("path_a: ", path_a)
-
-
-    moves = 0
-    input()
-    while g.player != g.goal and path:
-        d = ''
-        if g.player[0] < path[0][0]:
-            d = 'r'
-        if g.player[0] > path[0][0]:
-            d = 'l'
-        if g.player[1] > path[0][1]:
-            d = 'u'
-        if g.player[1] < path[0][1]:
-            d = 'd'
-        g.move_player(d)
-        moves += 1
-        print()
-        path.pop(0)
-        draw_grid(g)
-        time.sleep(0.3)
-        clear()
-
-    print("You made it!")
-    # print('moves:', moves)
-
+    while g.goals:
+        # print('g.goals: ', g.goals)
+        graph = create_graph(g)
+        # print('graph: ', graph)
+        target = choice(g.goals)
+        # print('target: ', target)
+        path = dijsktra(graph, g.player, target)
+        # print('path: ', path)
+        if path == "Route Not Possible":
+            # print('AAAA')
+            g.move_ghosts()
+            clear()
+            draw_grid(g)
+            continue
+        path = path[1:]
+        # input()
+        while path:
+            d = ''
+            if g.player[0] < path[0][0]:
+                d = 'r'
+            if g.player[0] > path[0][0]:
+                d = 'l'
+            if g.player[1] > path[0][1]:
+                d = 'u'
+            if g.player[1] < path[0][1]:
+                d = 'd'
+            g.move_player(d)
+            g.move_ghosts()
+            print()
+            path = path[1:]
+            clear()
+            draw_grid(g)
+            if g.player in g.ghosts:
+                print('You lose!')
+                print("Score: ", g.score)
+                return
+            time.sleep(0.1)
+            graph = create_graph(g)
+            path = dijsktra(graph, g.player, target)
+            # print('path: ', path)
+            if path == "Route Not Possible":
+                # print('BBBB')
+                target = choice(g.goals)
+                graph = create_graph(g)
+                path = dijsktra(graph, g.player, target)
+                while path == "Route Not Possible":
+                    g.move_ghosts()
+                    clear()
+                    draw_grid(g)
+                    if g.player in g.ghosts:
+                        print('You lose!')
+                        print("Score: ", g.score)
+                        return
+                    graph = create_graph(g)
+                    path = dijsktra(graph, g.player, target)
+                continue
+            path = path[1:]
+            if target == g.player and len(g.goals) == 1:
+                break
+        if target == g.player and len(g.goals) == 1:
+            break
+    print("You won!")
+    print("Score: ", g.score)
 
 if __name__ == '__main__':
     main()
